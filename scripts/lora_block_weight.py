@@ -11,12 +11,13 @@ import numpy as np
 import gradio as gr
 import os.path
 import random
+import subprocess
+
 from pprint import pprint
-import modules.ui
-import modules.scripts as scripts
 from PIL import Image, ImageFont, ImageDraw
-import modules.shared as shared
-from modules import devices, sd_models, images,cmd_args, extra_networks
+import modules.ui
+from modules import scripts, shared
+from modules import devices, sd_models, images, cmd_args, extra_networks
 from modules.shared import opts, state
 from modules.processing import process_images, Processed
 
@@ -77,7 +78,7 @@ OUTS:1,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1\n\
 OUTALL:1,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1\n\
 ALL0.5:0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5"
 
-class Script(modules.scripts.Script):
+class Script(scripts.Script):
     def __init__(self):
         self.log = {}
 
@@ -85,7 +86,7 @@ class Script(modules.scripts.Script):
         return "LoRA Block Weight"
 
     def show(self, is_img2img):
-        return modules.scripts.AlwaysVisible
+        return scripts.AlwaysVisible
 
     def ui(self, is_img2img):
         LWEIGHTSPRESETS = DEF_WEIGHT_PRESET
@@ -140,12 +141,12 @@ class Script(modules.scripts.Script):
         ratiostags = [k for k in lratios.keys()]
         ratiostags = ",".join(ratiostags)
 
-        if os.environ.get('IGNORE_CMD_ARGS_ERRORS', None) is None:
-            args = cmd_args.parser.parse_args()
-        else:
-            args, _ = cmd_args.parser.parse_known_args()
-        if args.api:
-            register()
+        # if os.environ.get('IGNORE_CMD_ARGS_ERRORS', None) is None:
+        #     args = cmd_args.parser.parse_args()
+        # else:
+        #     args, _ = cmd_args.parser.parse_known_args()
+        # if args.api:
+        #     register()
 
         with gr.Accordion("LoRA Block Weight",open = False):
             with gr.Row():
@@ -191,7 +192,6 @@ class Script(modules.scripts.Script):
                 d_true = gr.Checkbox(value = True,visible = False)
                 d_false = gr.Checkbox(value = False,visible = False)
         
-        import subprocess
         def openeditors(b):
             path = extpath if b else extpathe
             subprocess.Popen(['start', path], shell=True)
@@ -231,15 +231,6 @@ class Script(modules.scripts.Script):
                 with open(extpathe,mode = 'w',encoding="utf-8") as f:
                     f.write(text)
 
-        reloadtext.click(fn=reloadpresets,inputs=[d_true],outputs=[lbw_loraratios])
-        reloadtags.click(fn=tagdicter,inputs=[lbw_loraratios],outputs=[bw_ratiotags])
-        savetext.click(fn=savepresets,inputs=[lbw_loraratios,d_true],outputs=[])
-        openeditor.click(fn=openeditors,inputs=[d_true],outputs=[])
-
-        e_reloadtext.click(fn=reloadpresets,inputs=[d_false],outputs=[elemental])
-        e_savetext.click(fn=savepresets,inputs=[elemental,d_false],outputs=[])
-        e_openeditor.click(fn=openeditors,inputs=[d_false],outputs=[])
-
         def urawaza(active):
             if active > 0:
                 register()
@@ -252,9 +243,37 @@ class Script(modules.scripts.Script):
                 scripts.scripts_img2img.run = runorigini
                 return [*[gr.update(visible = True) for x in range(6)],*[gr.update(visible = False) for x in range(4)]]
 
+        reloadtext.click(fn=reloadpresets,inputs=[d_true],outputs=[lbw_loraratios])
+        reloadtags.click(fn=tagdicter,inputs=[lbw_loraratios],outputs=[bw_ratiotags])
+        savetext.click(fn=savepresets,inputs=[lbw_loraratios,d_true],outputs=[])
+        openeditor.click(fn=openeditors,inputs=[d_true],outputs=[])
+
+        e_reloadtext.click(fn=reloadpresets,inputs=[d_false],outputs=[elemental])
+        e_savetext.click(fn=savepresets,inputs=[elemental,d_false],outputs=[])
+        e_openeditor.click(fn=openeditors,inputs=[d_false],outputs=[])
+
         xyzsetting.change(fn=urawaza,inputs=[xyzsetting],outputs =[xtype,xmen,ytype,ymen,ztype,zmen,exmen,eymen,ecount,esets])
 
-        return lbw_loraratios,lbw_useblocks,xyzsetting,xtype,xmen,ytype,ymen,ztype,zmen,exmen,eymen,ecount,diffcol,thresh,revxy,elemental,elemsets,debug
+        return [
+            lbw_loraratios,
+            lbw_useblocks,
+            xyzsetting,
+            xtype,
+            xmen,
+            ytype,
+            ymen,
+            ztype,
+            zmen,
+            exmen,
+            eymen,
+            ecount,
+            diffcol,
+            thresh,
+            revxy,
+            elemental,
+            elemsets,
+            debug
+        ]
 
     def process(self, p, loraratios,useblocks,xyzsetting,xtype,xmen,ytype,ymen,ztype,zmen,exmen,eymen,ecount,diffcol,thresh,revxy,elemental,elemsets,debug):
         #print("self =",self,"p =",p,"presets =",loraratios,"useblocks =",useblocks,"xyzsettings =",xyzsetting,"xtype =",xtype,"xmen =",xmen,"ytype =",ytype,"ymen =",ymen,"ztype =",ztype,"zmen =",zmen)
@@ -311,13 +330,14 @@ class Script(modules.scripts.Script):
             if not self.isnet: loradealer(self, o_prompts ,self.lratios,self.elementals)
 
     def postprocess(self, p, processed, presets,useblocks,xyzsetting,xtype,xmen,ytype,ymen,ztype,zmen,exmen,eymen,ecount,diffcol,thresh,revxy,elemental,elemsets,debug,*args):
-        lora = importer(self)
-        lora.loaded_loras.clear()
-        global lxyz,lzyx,xyelem             
-        lxyz = lzyx = xyelem = ""
-        if debug:
-            print(self.log)
-        gc.collect()
+        if useblocks:
+            lora = importer(self)
+            lora.loaded_loras.clear()
+            global lxyz,lzyx,xyelem             
+            lxyz = lzyx = xyelem = ""
+            if debug:
+                print(self.log)
+            gc.collect()
 
     def after_extra_networks_activate(self, p, presets,useblocks,xyzsetting,xtype,xmen,ytype,ymen,ztype,zmen,exmen,eymen,ecount,diffcol,thresh,revxy,elemental,elemsets,debug, *args, **kwargs):
         if useblocks:
